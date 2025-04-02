@@ -36,9 +36,8 @@ pandas
 openpyxl # For reading Excel files
 
 # Email & Notifications
-sendgrid  # For sending emails
+mailersend  # For sending emails (Free tier: 3,000 emails/month)
 slack_sdk
-sendgrid # Or another email library
 
 # Testing
 pytest
