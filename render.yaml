@@ -32,6 +32,8 @@ services:
     region: ohio
     plan: free
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
       - key: REDIS_HOST
         fromService:
           name: insightflow-redis
@@ -44,6 +46,8 @@ services:
           property: port
       - key: PORT
         value: 8000
+      - key: SERVICE_TYPE
+        value: "api"
 
   # 3. Frontend (Next.js Application)
   - name: insightflow-frontend
