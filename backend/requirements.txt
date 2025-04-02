@@ -1,0 +1,44 @@
+# Core Dependencies
+fastapi
+uvicorn[standard]
+python-dotenv
+
+# Database & Auth
+supabase
+# psycopg2-binary # Optional, if direct postgres connection needed beyond supabase client
+
+# Task Queue
+redis
+arq
+
+# File Processing & Validation
+python-magic-bin # For robust MIME type detection
+
+# Scraping
+requests
+beautifulsoup4
+scrapy # Add if complex scraping needed
+# playwright # Add if JS rendering needed for scraping
+
+# APIs
+# google-api-python-client # If needed for specific Google APIs
+# python-twitter # Or another Twitter library
+praw # For Reddit API
+
+# AI/Analysis
+langchain
+# langchain-openai # If using OpenAI models
+# langchain-huggingface # If using Hugging Face models/endpoints
+transformers
+torch # Or tensorflow, depending on transformer backend
+pandas
+openpyxl # For reading Excel files
+
+# Notifications
+slack_sdk
+sendgrid # Or another email library
+
+# Testing
+pytest
+pytest-asyncio
+httpx # For making HTTP requests in tests 
