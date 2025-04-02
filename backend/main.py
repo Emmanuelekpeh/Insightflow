@@ -12,8 +12,8 @@ import arq # For Arq pool creation
 # Load environment variables from .env file
 load_dotenv()
 
-# Fix imports to be absolute instead of relative
-from backend.routers import dashboard, auth, newsletter
+# Fix imports to be relative instead of absolute
+from routers import dashboard, auth, newsletter
 
 # --- Arq Redis Pool Management ---
 # Reuse Redis settings (consider moving to a central config file later)

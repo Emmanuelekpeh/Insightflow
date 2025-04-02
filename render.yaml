@@ -15,44 +15,35 @@
 
 services:
   # 1. Redis Cache
-  - name: insightflow-redis
-    type: redis
-    plan: free # Or choose a paid plan for more resources
-    ipAllowList: [] # Optional: Restrict access; empty allows all Render services in the account
-    maxmemoryPolicy: allkeys-lru # Example policy, choose as needed
+  - type: redis
+    name: insightflow-redis
+    region: ohio
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
 
   # 2. Backend API (FastAPI Web Service + Background Worker)
-  - name: insightflow-backend
-    type: web
+  - type: web
+    name: insightflow-backend
     runtime: docker
-    repo: https://github.com/Emmanuelekpeh/Insightflow # Replace with your actual repo URL
-    # branch: main
+    repo: https://github.com/Emmanuelekpeh/Insightflow
     dockerfilePath: ./backend/Dockerfile
-    dockerContext: .
-    plan: free # Or starter/standard depending on needs
-    healthCheckPath: /health
+    dockerContext: ./backend
+    region: ohio
+    plan: free
     envVars:
-      - key: SUPABASE_URL
-        sync: false # Set secret in Render dashboard or use envVarGroups
-      - key: SUPABASE_SERVICE_KEY
-        sync: false # Set secret in Render dashboard or use envVarGroups
-      - key: SENDGRID_API_KEY
-        sync: false
-      - key: REDIS_URL # Render provides a connection string URL for Redis
+      - key: REDIS_HOST
         fromService:
-          type: redis
           name: insightflow-redis
-          property: connectionString
-      - key: REDIS_HOST # Explicit host/port needed by backend?
-        fromService:
           type: redis
-          name: insightflow-redis
           property: host
       - key: REDIS_PORT
         fromService:
-          type: redis
           name: insightflow-redis
+          type: redis
           property: port
+      - key: PORT
+        value: 8000
 
   # 3. Frontend (Next.js Application)
   - name: insightflow-frontend
