@@ -5,6 +5,21 @@ try {
   // ignore error
 }
 
+// Define CSP Header
+const cspHeader = `
+    default-src 'self';
+    script-src 'self' 'unsafe-eval' 'unsafe-inline';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' blob: data:;
+    font-src 'self';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+    frame-ancestors 'none';
+    connect-src 'self' https://api.mailersend.com;
+    upgrade-insecure-requests;
+`
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -20,6 +35,20 @@ const nextConfig = {
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
+  },
+  // Add CSP Headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: cspHeader.replace(/\n/g, ''),
+          },
+        ],
+      },
+    ]
   },
   // Add proxy rewrite for API calls during development
   async rewrites() {

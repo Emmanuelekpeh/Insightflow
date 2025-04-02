@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
 import os
 import contextlib # For lifespan manager
@@ -16,6 +19,30 @@ from backend.routers import dashboard, auth, newsletter
 # Reuse Redis settings (consider moving to a central config file later)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+
+# --- CSP Middleware ---
+class CSPMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        
+        # Define CSP policy
+        csp_policy = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-eval' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' blob: data:; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'; "
+            "connect-src 'self' https://api.mailersend.com; "
+            "upgrade-insecure-requests;"
+        )
+        
+        # Add CSP header
+        response.headers["Content-Security-Policy"] = csp_policy
+        return response
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,12 +80,26 @@ origins = [
     # Add any other origins if necessary (e.g., staging environment)
 ]
 
+# Add CSP Middleware
+app.add_middleware(CSPMiddleware)
+
+# Add CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True, # Allow cookies
     allow_methods=["*"], # Allow all methods (GET, POST, etc.)
     allow_headers=["*"], # Allow all headers
+)
+
+# Add Trusted Host Middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+        "localhost",
+        "127.0.0.1",
+        "*.onrender.com"  # Allow Render subdomains
+    ]
 )
 
 @app.get("/", tags=["Health"])
