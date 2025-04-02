@@ -13,7 +13,7 @@ redis
 arq
 
 # File Processing & Validation
-python-magic-bin # For robust MIME type detection
+python-magic  # For robust MIME type detection
 
 # Scraping
 requests
