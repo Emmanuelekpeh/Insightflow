@@ -31,7 +31,7 @@ beautifulsoup4==4.12.2
 praw==7.7.1 # For Reddit API
 
 # AI/Analysis
-langchain==0.0.292
+langchain==0.1.20
 # langchain-openai # If using OpenAI models
 # langchain-huggingface # If using Hugging Face models/endpoints
 transformers==4.31.0 # For NLP tasks like sentiment analysis
@@ -45,4 +45,4 @@ slack_sdk==3.21.3
 # Testing
 pytest==7.4.0
 pytest-asyncio==0.21.1
-httpx==0.24.1 # For making HTTP requests in tests 
+httpx==0.23.3 # For making HTTP requests in tests 
