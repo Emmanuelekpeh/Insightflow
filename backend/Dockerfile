@@ -12,20 +12,35 @@ WORKDIR /app
 # python-magic-bin includes its own binaries, but if using standard python-magic:
 # RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 && rm -rf /var/lib/apt/lists/*
 
+# Install system dependencies for python-magic-bin
+RUN apt-get update && apt-get install -y \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # 5. Install Python Dependencies
 # Copy only requirements first to leverage Docker cache
-COPY ./backend/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. Copy Application Code
 # Copy the rest of the backend code
-COPY ./backend /app/backend
+COPY . .
 
 # 7. Expose Port (Render uses PORT env var, typically 10000)
-EXPOSE 10000
+EXPOSE 8000
 
-# 8. Default Command (Will be overridden by Render start command)
-# Default to running the web server
-# Note: Render injects $PORT, so we use that in the start command in render.yaml
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Use environment variable to determine which command to run
+ENV SERVICE_TYPE=api
+
+# Create an entrypoint script
+RUN echo '#!/bin/sh\n\
+if [ "$SERVICE_TYPE" = "worker" ]; then\n\
+    exec arq backend.worker.WorkerSettings\n\
+else\n\
+    exec uvicorn backend.main:app --host 0.0.0.0 --port 8000\n\
+fi' > /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh
+
+# Use the entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
