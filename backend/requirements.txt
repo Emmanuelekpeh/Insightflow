@@ -6,7 +6,7 @@ python-dotenv==1.0.0
 pydantic[email]==2.0.2  # For email validation
 
 # Database & Auth
-supabase==1.0.3
+supabase==2.5.0
 # psycopg2-binary # Optional, if direct postgres connection needed beyond supabase client
 
 # Task Queue
