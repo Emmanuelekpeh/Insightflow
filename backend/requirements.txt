@@ -1,5 +1,6 @@
 # Core Dependencies
-fastapi
+fastapi>=0.100.0
+starlette>=0.27.0
 uvicorn[standard]
 python-dotenv
 pydantic[email]  # For email validation
