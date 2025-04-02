@@ -84,28 +84,18 @@ services:
           name: insightflow-redis
           property: port
 
-  # 4. Frontend (Next.js Static Site)
+  # 4. Frontend (Next.js Application)
   - name: insightflow-frontend
-    type: static_site # Use 'static_site' for Next.js static export or SPA
-    repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your actual repo URL
-    # branch: main
-    # rootDir: ./ # Assuming Next.js is at the root
-    buildCommand: "pnpm install && pnpm build" # Adjust if using npm/yarn
-    publishDir: out # For static export; if SSR/ISR, use 'web' type instead
-    plan: free # Or starter/standard depending on needs
-    # Static sites generally don't need runtime env vars here, set build vars if needed
-    # envVars:
-    #   - key: NEXT_PUBLIC_SUPABASE_URL
-    #     sync: false # Set in Render Dashboard
-    #   - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    #     sync: false # Set in Render Dashboard
-    #   - key: NEXT_PUBLIC_API_BASE_URL # For build time if needed
-    #     value: http://insightflow-backend:10000
-    # Rewrites handle API proxying and client-side routing
-    routes:
-      - type: rewrite
-        source: /api/(.*)
-        destination: http://insightflow-backend:10000/api/$1 # Proxy to backend
-      - type: rewrite
-        source: /*
-        destination: /index.html # SPA fallback 
+    type: web
+    runtime: node
+    repo: https://github.com/YOUR_USERNAME/YOUR_REPO
+    buildCommand: pnpm install && pnpm build
+    startCommand: pnpm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: NEXT_PUBLIC_API_URL
+        value: https://insightflow-backend.onrender.com # Adjust this to your backend URL 
