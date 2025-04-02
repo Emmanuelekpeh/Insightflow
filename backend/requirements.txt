@@ -2,6 +2,7 @@
 fastapi
 uvicorn[standard]
 python-dotenv
+pydantic[email]  # For email validation
 
 # Database & Auth
 supabase
@@ -34,7 +35,8 @@ torch # Or tensorflow, depending on transformer backend
 pandas
 openpyxl # For reading Excel files
 
-# Notifications
+# Email & Notifications
+sendgrid  # For sending emails
 slack_sdk
 sendgrid # Or another email library
 

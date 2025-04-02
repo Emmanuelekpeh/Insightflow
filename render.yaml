@@ -21,7 +21,7 @@ services:
     ipAllowList: [] # Optional: Restrict access; empty allows all Render services in the account
     maxmemoryPolicy: allkeys-lru # Example policy, choose as needed
 
-  # 2. Backend API (FastAPI Web Service)
+  # 2. Backend API (FastAPI Web Service + Background Worker)
   - name: insightflow-backend
     type: web
     runtime: docker
@@ -32,12 +32,12 @@ services:
     plan: free # Or starter/standard depending on needs
     healthCheckPath: /health
     envVars:
-      - key: SERVICE_TYPE
-        value: api
       - key: SUPABASE_URL
         sync: false # Set secret in Render dashboard or use envVarGroups
       - key: SUPABASE_SERVICE_KEY
         sync: false # Set secret in Render dashboard or use envVarGroups
+      - key: SENDGRID_API_KEY
+        sync: false
       - key: REDIS_URL # Render provides a connection string URL for Redis
         fromService:
           type: redis
@@ -54,39 +54,7 @@ services:
           name: insightflow-redis
           property: port
 
-  # 3. Background Worker (Arq)
-  - name: insightflow-worker
-    type: worker
-    runtime: docker
-    repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your actual repo URL
-    # branch: main
-    dockerfilePath: ./backend/Dockerfile # Reuse the same backend image
-    dockerContext: .
-    plan: free # Or starter/standard depending on needs
-    envVars:
-      - key: SERVICE_TYPE
-        value: worker
-      - key: SUPABASE_URL
-        sync: false # Set secret in Render dashboard or use envVarGroups
-      - key: SUPABASE_SERVICE_KEY
-        sync: false # Set secret in Render dashboard or use envVarGroups
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: insightflow-redis
-          property: connectionString
-      - key: REDIS_HOST # Explicit host/port needed by worker?
-        fromService:
-          type: redis
-          name: insightflow-redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: insightflow-redis
-          property: port
-
-  # 4. Frontend (Next.js Application)
+  # 3. Frontend (Next.js Application)
   - name: insightflow-frontend
     type: web
     runtime: node

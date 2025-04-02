@@ -10,7 +10,7 @@ import arq # For Arq pool creation
 load_dotenv()
 
 # Fix imports to be absolute instead of relative
-from backend.routers import dashboard, auth
+from backend.routers import dashboard, auth, newsletter
 
 # --- Arq Redis Pool Management ---
 # Reuse Redis settings (consider moving to a central config file later)
@@ -74,6 +74,7 @@ async def health_check():
 # Include routers
 app.include_router(dashboard.router)
 app.include_router(auth.router)
+app.include_router(newsletter.router)
 
 # Placeholder for future routers
 # from routers import users, trends, competitors, etc.

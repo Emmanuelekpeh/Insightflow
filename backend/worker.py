@@ -4,9 +4,14 @@ from dotenv import load_dotenv
 import redis.asyncio as redis
 import pandas as pd # For reading data files
 import magic # For file type detection
-from datetime import datetime # For date conversion
+from datetime import datetime, timedelta # For date conversion
 from supabase import create_client, Client # Import Supabase
 import json # To handle JSON conversion for headers
+from arq import cron
+from arq.connections import RedisSettings
+from backend.lib.supabase import get_supabase_client
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 # Load environment variables (essential for Supabase credentials)
 load_dotenv()
@@ -165,6 +170,67 @@ async def process_uploaded_file(ctx, job_id: str, user_id: str, file_path: str, 
     print(f"{log_prefix} Processing finished with status: {final_status}")
     return {"final_status": final_status, "job_id": job_id} # Return simple status
 
+async def generate_newsletter_content() -> Dict[str, Any]:
+    """Generate newsletter content from recent insights and updates."""
+    supabase = get_supabase_client()
+    
+    # Get recent market insights
+    insights = supabase.table("market_insights").select("*").order("created_at", desc=True).limit(5).execute()
+    
+    # Get recent competitor updates
+    competitor_updates = supabase.table("competitor_updates").select("*").order("created_at", desc=True).limit(3).execute()
+    
+    # Format content
+    content = {
+        "market_insights": insights.data if insights.data else [],
+        "competitor_updates": competitor_updates.data if competitor_updates.data else [],
+        "generated_at": datetime.utcnow().isoformat()
+    }
+    
+    return content
+
+async def send_newsletter(ctx) -> Dict[str, str]:
+    """Send weekly newsletter to all subscribers."""
+    try:
+        supabase = get_supabase_client()
+        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
+        
+        # Get active subscribers
+        subscribers = supabase.table("newsletter_subscribers").select("*").eq("unsubscribed", False).execute()
+        
+        if not subscribers.data:
+            return {"status": "No active subscribers"}
+        
+        # Generate newsletter content
+        content = await generate_newsletter_content()
+        
+        # Format HTML email
+        html_content = f'''
+        <h1>InsightFlow Weekly Newsletter</h1>
+        <h2>Market Insights</h2>
+        {"".join([f"<p>• {insight['title']}</p>" for insight in content['market_insights']])}
+        
+        <h2>Competitor Updates</h2>
+        {"".join([f"<p>• {update['title']}</p>" for update in content['competitor_updates']])}
+        
+        <p>View more insights on your <a href="https://your-app-url.com/dashboard">dashboard</a>.</p>
+        <p><small>To unsubscribe, <a href="https://your-app-url.com/unsubscribe">click here</a>.</small></p>
+        '''
+        
+        # Send to all subscribers
+        for subscriber in subscribers.data:
+            message = Mail(
+                from_email='your-verified-sender@yourdomain.com',
+                to_emails=subscriber['email'],
+                subject='Your Weekly Market Insights - InsightFlow',
+                html_content=html_content
+            )
+            sg.send(message)
+        
+        return {"status": "Newsletter sent successfully", "recipients": len(subscribers.data)}
+    except Exception as e:
+        print(f"Error sending newsletter: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 # --- Arq Worker Settings ---
 
@@ -186,12 +252,21 @@ async def shutdown(ctx):
     #     await ctx['redis'].close()
 
 class WorkerSettings:
-    """Defines settings for the Arq worker."""
-    functions = [process_uploaded_file]
-    redis_settings = redis.RedisSettings(host=REDIS_HOST, port=REDIS_PORT)
-    on_startup = startup
-    on_shutdown = shutdown
-    keep_result = 3600 # Keep job results for 1 hour
+    """Settings for the ARQ worker."""
+    redis_settings = RedisSettings(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379))
+    )
+    
+    functions = [
+        process_uploaded_file,
+        send_newsletter
+    ]
+    
+    # Run newsletter job every Monday at 9 AM UTC
+    cron_jobs = [
+        cron(send_newsletter, weekday=1, hour=9, minute=0)
+    ]
 
 # To run the worker, use the command:
 # arq backend.worker.WorkerSettings 
