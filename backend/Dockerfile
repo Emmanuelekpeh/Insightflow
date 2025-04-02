@@ -1,38 +1,35 @@
 # 1. Base Image
 FROM python:3.11-slim
 
-# 2. Environment Variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# 3. Set Working Directory
-WORKDIR /app
-
-# 4. Install System Dependencies
+# 1. Install system dependencies
 RUN apt-get update && apt-get install -y \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 5. Copy requirements first for better caching
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+# 2. Set working directory
+WORKDIR /app
 
-# 6. Copy Application Code
+# 3. Copy requirements first for better caching
+COPY backend/requirements.txt .
+
+# 4. Upgrade pip and install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# 5. Copy application code
 COPY backend/ .
 
-# 7. Expose Port
+# 6. Create entrypoint script
+RUN echo '#!/bin/sh\n\
+if [ "$SERVICE_TYPE" = "worker" ]; then\n\
+    python worker.py\n\
+else\n\
+    uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}\n\
+fi' > /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
+
+# 7. Expose port
 EXPOSE 8000
 
-# Create a startup script that runs both the API and worker
-RUN echo '#!/bin/sh\n\
-# Start the worker in the background\n\
-arq backend.worker.WorkerSettings & \n\
-\n\
-# Start the API server\n\
-uvicorn backend.main:app --host 0.0.0.0 --port 8000\n\
-' > /app/start.sh \
-    && chmod +x /app/start.sh
-
-# Use the startup script
-CMD ["/app/start.sh"]
+# 8. Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
