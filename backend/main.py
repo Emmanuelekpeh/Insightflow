@@ -1,8 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
 import os
 import contextlib # For lifespan manager
@@ -12,43 +8,18 @@ import arq # For Arq pool creation
 # Load environment variables from .env file
 load_dotenv()
 
-# Fix imports to be relative instead of absolute
-from routers import dashboard, auth, newsletter
+# Fix imports to be absolute instead of relative
+from backend.routers import dashboard, auth
 
 # --- Arq Redis Pool Management ---
 # Reuse Redis settings (consider moving to a central config file later)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
-# --- CSP Middleware ---
-class CSPMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        
-        # Define CSP policy
-        csp_policy = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-eval' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' blob: data:; "
-            "font-src 'self'; "
-            "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'; "
-            "frame-ancestors 'none'; "
-            "connect-src 'self' https://api.mailersend.com; "
-            "upgrade-insecure-requests;"
-        )
-        
-        # Add CSP header
-        response.headers["Content-Security-Policy"] = csp_policy
-        return response
-
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Create Arq Redis pool
     print("INFO:     Creating Arq Redis pool...")
-    # TODO: Check if arq.connections.RedisSettings can take redis_url directly
     redis_settings = arq.connections.RedisSettings(host=REDIS_HOST, port=REDIS_PORT)
     arq_pool = await arq.create_pool(redis_settings)
     app.state.arq_pool = arq_pool # Store the pool in app state
@@ -68,40 +39,6 @@ app = FastAPI(
     lifespan=lifespan # Add the lifespan manager
 )
 
-# --- CORS Middleware Configuration ---
-# Define allowed origins. Replace placeholders with your actual frontend URLs.
-# Use environment variables for production origins for flexibility.
-FRONTEND_DEV_URL = os.getenv("FRONTEND_DEV_URL", "http://localhost:3000")
-FRONTEND_PROD_URL = os.getenv("FRONTEND_PROD_URL", "https://YOUR_FRONTEND_RENDER_URL.onrender.com") # Placeholder
-
-origins = [
-    FRONTEND_DEV_URL,
-    FRONTEND_PROD_URL,
-    # Add any other origins if necessary (e.g., staging environment)
-]
-
-# Add CSP Middleware
-app.add_middleware(CSPMiddleware)
-
-# Add CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True, # Allow cookies
-    allow_methods=["*"], # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"], # Allow all headers
-)
-
-# Add Trusted Host Middleware
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=[
-        "localhost",
-        "127.0.0.1",
-        "*.onrender.com"  # Allow Render subdomains
-    ]
-)
-
 @app.get("/", tags=["Health"])
 async def read_root():
     """Root endpoint providing a simple hello message."""
@@ -115,7 +52,6 @@ async def health_check():
 # Include routers
 app.include_router(dashboard.router)
 app.include_router(auth.router)
-app.include_router(newsletter.router)
 
 # Placeholder for future routers
 # from routers import users, trends, competitors, etc.
