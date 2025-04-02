@@ -86,7 +86,7 @@ services:
 
   # 4. Frontend (Next.js Static Site)
   - name: insightflow-frontend
-    type: static # Use 'static' for Next.js static export or SPA
+    type: static_site # Use 'static_site' for Next.js static export or SPA
     repo: https://github.com/YOUR_USERNAME/YOUR_REPO # Replace with your actual repo URL
     # branch: main
     # rootDir: ./ # Assuming Next.js is at the root
