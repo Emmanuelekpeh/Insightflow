@@ -13,13 +13,13 @@ RUN apt-get update && apt-get install -y \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 5. Install Python Dependencies
-COPY requirements.txt .
+# 5. Copy requirements first for better caching
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. Copy Application Code
-COPY . .
+COPY backend/ .
 
 # 7. Expose Port
 EXPOSE 8000
