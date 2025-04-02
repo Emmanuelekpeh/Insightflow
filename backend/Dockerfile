@@ -10,13 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 4. Copy requirements first for better caching
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # 5. Upgrade pip and install dependencies
 RUN pip install -r requirements.txt
 
 # 6. Copy the application code
-COPY . .
+COPY backend/ .
 
 # 7. Add the current directory to PYTHONPATH
 ENV PYTHONPATH=/app

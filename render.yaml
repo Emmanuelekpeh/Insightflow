@@ -27,8 +27,8 @@ services:
     name: insightflow-backend
     runtime: docker
     repo: https://github.com/Emmanuelekpeh/Insightflow
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
     region: ohio
     plan: free
     envVars:
