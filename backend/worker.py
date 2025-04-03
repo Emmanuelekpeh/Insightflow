@@ -49,7 +49,7 @@ try:
     device = 0 if torch.cuda.is_available() else -1 # Use GPU if available
     sentiment_pipeline = hf_pipeline(
         'sentiment-analysis',
-        model='distilbert-base-uncased-finetuned-sst-2-english',
+        model='mrm8488/bert-tiny-finetuned-sst2',
         device=device
     )
     print("INFO:WORKER: Sentiment analysis pipeline initialized.")
