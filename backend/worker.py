@@ -13,49 +13,35 @@ import re # Import regex for potential use
 from arq import cron
 from arq.connections import RedisSettings
 import arq # For Arq pool creation
+from typing import Optional, Dict, List, Any, Union
+import psutil
+import torch
+from transformers import pipeline as hf_pipeline
 
 # Import analysis libraries
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer # Added CountVectorizer
 from sklearn.feature_extraction import _stop_words # To get default stop words
-from transformers import pipeline as hf_pipeline # Rename to avoid conflict
-import torch # Ensure torch is available if using PyTorch models
 
 # Load environment variables (essential for Supabase credentials)
 load_dotenv()
 
-# --- Supabase Client Initialization (using Service Role Key) ---
+# Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-supabase: Client | None = None
-if SUPABASE_URL and SUPABASE_SERVICE_KEY:
-    try:
-        # Initialize Supabase client synchronously during worker setup phase
-        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-        print("INFO:WORKER: Supabase client initialized successfully.")
-    except Exception as e:
-        print(f"ERROR:WORKER: Failed to initialize Supabase client: {e}")
-        supabase = None
-else:
-    print("WARN:WORKER: Supabase URL or Service Key not found. Database operations will fail.")
-
-# --- NLP Model Initialization ---
-# Load the sentiment analysis model once when the worker starts
-# Use a simpler model for quicker loading if full accuracy isn't paramount initially
+# Initialize sentiment pipeline with basic configuration
+print("INFO:WORKER: Initializing sentiment analysis pipeline...")
 sentiment_pipeline = None
 try:
-    print("INFO:WORKER: Initializing sentiment analysis pipeline...")
-    # Ensure device is set correctly (CPU might be more stable in some environments)
-    device = 0 if torch.cuda.is_available() else -1 # Use GPU if available
     sentiment_pipeline = hf_pipeline(
-        'sentiment-analysis',
-        model='mrm8488/bert-tiny-finetuned-sst2',
-        device=device
+        task='sentiment-analysis',
+        model='distilbert-base-uncased-finetuned-sst-2-english',  # Using a verified public model
+        device=-1  # Force CPU for stability
     )
-    print("INFO:WORKER: Sentiment analysis pipeline initialized.")
+    print("INFO:WORKER: Sentiment analysis pipeline initialized successfully.")
 except Exception as e:
     print(f"ERROR:WORKER: Failed to initialize sentiment analysis pipeline: {e}")
-    # Worker can still run, but sentiment analysis will fail
 
 # --- Custom Stop Words --- (Define near imports or top of function)
 CUSTOM_STOP_WORDS = set([
@@ -72,30 +58,22 @@ CUSTOM_STOP_WORDS = set([
 
 # --- Helper Functions ---
 
-async def update_upload_status(upload_id: str, status: str, error: Optional[str] = None, extra_data: Optional[dict] = None):
-    """Helper to update the status in the file_uploads table."""
-    if not supabase:
-        print(f"WARN:WORKER: Supabase client not available. Cannot update status for upload {upload_id}.")
-        return
-
-    update_payload = {
-        "status": status,
-        "updated_at": datetime.utcnow().isoformat(),
-        "error_reason": error
-    }
-    if extra_data:
-        update_payload.update(extra_data)
-
+async def update_upload_status(upload_id: str, status: str, error: Optional[str] = None, extra_data: Optional[Dict[str, Any]] = None):
+    """Update the status of an upload in the database."""
     try:
-        await asyncio.to_thread(
-            supabase.table("file_uploads") # Corrected table name
-            .update(update_payload)
-            .eq("id", upload_id) # Use upload_id (PK) for targeting
-            .execute
-        )
-        print(f"INFO:WORKER: Updated status for upload {upload_id} to '{status}'.")
+        data = {
+            "status": status,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        if error:
+            data["error_reason"] = error
+        if extra_data:
+            data.update(extra_data)
+        
+        result = supabase.table("file_uploads").update(data).eq("id", upload_id).execute()
+        return result
     except Exception as e:
-        print(f"ERROR:WORKER: Failed to update status for upload {upload_id}: {e}")
+        print(f"Error updating upload status: {e}")
 
 
 # --- Main Task Function ---

@@ -22,7 +22,7 @@ services:
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
-  # 2. Backend API (FastAPI Web Service + Background Worker)
+  # 2. Backend API (FastAPI Web Service)
   - type: web
     name: insightflow-backend
     runtime: docker
@@ -48,14 +48,46 @@ services:
         value: 8000
       - key: SERVICE_TYPE
         value: "api"
+      - key: TRANSFORMERS_CACHE
+        value: "/tmp/transformers_cache"
 
-  # 3. Frontend (Next.js Application)
+  # 3. Background Worker (Arq)
+  - type: worker
+    name: insightflow-worker
+    runtime: docker
+    repo: https://github.com/Emmanuelekpeh/Insightflow
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    region: ohio
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: REDIS_HOST
+        fromService:
+          name: insightflow-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: insightflow-redis
+          type: redis
+          property: port
+      - key: SERVICE_TYPE
+        value: "worker"
+      - key: TRANSFORMERS_CACHE
+        value: "/tmp/transformers_cache"
+      - key: MAX_WORKERS
+        value: "1"
+
+  # 4. Frontend (Next.js Application)
   - name: insightflow-frontend
     type: web
     runtime: node
     repo: https://github.com/Emmanuelekpeh/Insightflow
     buildCommand: pnpm install && pnpm build
     startCommand: pnpm start
+    region: ohio
     plan: free
     envVars:
       - key: NODE_ENV
@@ -63,4 +95,23 @@ services:
       - key: PORT
         value: "3000"
       - key: NEXT_PUBLIC_API_URL
-        value: https://insightflow-backend.onrender.com # Adjust this to your backend URL 
+        fromService:
+          name: insightflow-backend
+          type: web
+          property: url
+
+# Note on Secrets:
+# It's strongly recommended to use Render's Secret Files or Environment Groups
+# for sensitive values like API keys and database credentials instead of directly
+# setting them as environment variables here. This example uses placeholder values
+# that MUST be replaced with actual secrets configured in your Render dashboard.
+# Example using Environment Group reference (uncomment and configure group first):
+# envVarGroups:
+#   - name: supabase-secrets
+#   - name: mailersend-secrets
+# And then reference like:
+# envVars:
+#   - fromGroup: supabase-secrets
+#   - fromGroup: mailersend-secrets
+# See: https://render.com/docs/environment-variables#environment-groups
+# See: https://render.com/docs/secret-files

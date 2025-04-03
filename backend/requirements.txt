@@ -1,48 +1,25 @@
 # Core Dependencies
 fastapi==0.100.0
-starlette==0.27.0
 uvicorn[standard]==0.23.0
 python-dotenv==1.0.0
-pydantic[email]==2.0.2  # For email validation
+pydantic[email]==2.0.2
 
 # Database & Auth
 supabase==2.5.0
-# psycopg2-binary # Optional, if direct postgres connection needed beyond supabase client
-
-# Task Queue
 redis==4.6.0
 arq==0.25.0
 
-# File Processing & Validation
-python-magic==0.4.27  # For robust MIME type detection
+# File Processing
+python-magic==0.4.27
 pandas==2.0.3
-openpyxl==3.1.2 # For reading Excel files
-numpy==1.26.4 # Dependency for pandas and scikit-learn
+numpy==1.26.4
 
-# Scraping
-requests==2.31.0
-beautifulsoup4==4.12.2
-# scrapy==2.10.0 # Add if complex scraping needed
-# playwright # Add if JS rendering needed for scraping
-
-# APIs
-# google-api-python-client # If needed for specific Google APIs
-# python-twitter # Or another Twitter library
-praw==7.7.1 # For Reddit API
-
-# AI/Analysis
-langchain==0.1.20
-# langchain-openai # If using OpenAI models
-# langchain-huggingface # If using Hugging Face models/endpoints
-transformers==4.31.0 # For NLP tasks like sentiment analysis
-torch==2.0.1 # Or tensorflow, depending on transformer backend
-scikit-learn==1.3.0 # For TF-IDF, potentially other ML tasks
-
-# Email & Notifications
-mailersend==0.5.5  # For sending emails (Free tier: 3,000 emails/month)
-slack_sdk==3.21.3
+# ML/NLP
+transformers==4.31.0
+torch==2.0.1
+scikit-learn==1.3.0
 
 # Testing
 pytest==7.4.0
 pytest-asyncio==0.21.1
-httpx==0.27.0 # For making HTTP requests in tests 
+httpx==0.27.0 
