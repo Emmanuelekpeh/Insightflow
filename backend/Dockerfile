@@ -19,36 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV TRANSFORMERS_CACHE="/tmp/transformers_cache"
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
 
-# Download model with retries and verbose output
-RUN python -c '\
-try:\
-    from transformers import pipeline;\
-    import os;\
-    print("INFO: Cache directory:", os.getenv("TRANSFORMERS_CACHE"));\
-    print("INFO: Downloading sentiment analysis model...");\
-    for attempt in range(3):\
-        try:\
-            model = pipeline(\
-                "sentiment-analysis",\
-                model="distilbert-base-uncased-finetuned-sst-2-english",\
-                device=-1,\
-                cache_dir="/tmp/transformers_cache"\
-            );\
-            print("INFO: Testing model with sample text...");\
-            result = model("This is a test sentence.");\
-            print(f"INFO: Model test result: {result}");\
-            print("INFO: Model download and test successful!");\
-            break;\
-        except Exception as e:\
-            print(f"WARNING: Attempt {attempt + 1} failed: {e}");\
-            if attempt == 2:\
-                raise;\
-            import time;\
-            time.sleep(5);\
-except Exception as e:\
-    print(f"ERROR: Model download/test failed: {e}");\
-    raise e;\
-'
+# Create and add the download script
+COPY backend/scripts/download_model.py /tmp/download_model.py
+RUN python /tmp/download_model.py
 
 # Copy application code
 COPY . /app/backend/
