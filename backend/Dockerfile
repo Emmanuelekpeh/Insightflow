@@ -18,16 +18,35 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download the model during build with explicit cache directory and error handling
 ENV TRANSFORMERS_CACHE="/tmp/transformers_cache"
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
+
+# Download model with retries and verbose output
 RUN python -c '\
 try:\
     from transformers import pipeline;\
-    print("Downloading sentiment analysis model...");\
-    model = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english", device=-1, cache_dir="/tmp/transformers_cache");\
-    print("Testing model with sample text...");\
-    result = model("This is a test sentence.");\
-    print(f"Model test result: {result}");\
+    import os;\
+    print("INFO: Cache directory:", os.getenv("TRANSFORMERS_CACHE"));\
+    print("INFO: Downloading sentiment analysis model...");\
+    for attempt in range(3):\
+        try:\
+            model = pipeline(\
+                "sentiment-analysis",\
+                model="distilbert-base-uncased-finetuned-sst-2-english",\
+                device=-1,\
+                cache_dir="/tmp/transformers_cache"\
+            );\
+            print("INFO: Testing model with sample text...");\
+            result = model("This is a test sentence.");\
+            print(f"INFO: Model test result: {result}");\
+            print("INFO: Model download and test successful!");\
+            break;\
+        except Exception as e:\
+            print(f"WARNING: Attempt {attempt + 1} failed: {e}");\
+            if attempt == 2:\
+                raise;\
+            import time;\
+            time.sleep(5);\
 except Exception as e:\
-    print(f"Error downloading/testing model: {e}");\
+    print(f"ERROR: Model download/test failed: {e}");\
     raise e;\
 '
 

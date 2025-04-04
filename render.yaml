@@ -31,6 +31,7 @@ services:
     dockerContext: .
     region: ohio
     plan: free
+    buildCommand: docker build --build-arg PYTHONPATH=/app/backend -t app .
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -50,6 +51,12 @@ services:
         value: "api"
       - key: TRANSFORMERS_CACHE
         value: "/tmp/transformers_cache"
+      - key: PYTHONPATH
+        value: "/app/backend"
+      - key: HF_HUB_ENABLE_HF_TRANSFER
+        value: "1"
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
 
   # 3. Background Worker (Arq)
   - type: worker
@@ -60,6 +67,7 @@ services:
     dockerContext: .
     region: ohio
     plan: free
+    buildCommand: docker build --build-arg PYTHONPATH=/app/backend -t worker .
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
@@ -79,6 +87,12 @@ services:
         value: "/tmp/transformers_cache"
       - key: MAX_WORKERS
         value: "1"
+      - key: PYTHONPATH
+        value: "/app/backend"
+      - key: HF_HUB_ENABLE_HF_TRANSFER
+        value: "1"
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
 
   # 4. Frontend (Next.js Application)
   - name: insightflow-frontend

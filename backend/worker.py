@@ -1,4 +1,5 @@
-from typing import Optional, Dict, List, Any, Union
+from typing import Optional
+from typing import Dict, List, Any, Union
 import asyncio
 import os
 import time # To measure processing duration
@@ -16,7 +17,7 @@ from arq.connections import RedisSettings
 import arq # For Arq pool creation
 import psutil
 import torch
-from transformers import pipeline as hf_pipeline
+from transformers import pipeline as hf_pipeline, AutoTokenizer, AutoModelForSequenceClassification
 
 # Import analysis libraries
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer # Added CountVectorizer
@@ -30,19 +31,50 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-# Initialize sentiment pipeline with basic configuration
+# Initialize sentiment pipeline with robust error handling and fallback
 print("INFO:WORKER: Initializing sentiment analysis pipeline...")
 sentiment_pipeline = None
-try:
-    sentiment_pipeline = hf_pipeline(
-        task='sentiment-analysis',
-        model='distilbert-base-uncased-finetuned-sst-2-english',  # Using a verified public model
-        device=-1,  # Force CPU for stability
-        cache_dir=os.getenv('TRANSFORMERS_CACHE', '/tmp/transformers_cache')  # Use explicit cache dir
-    )
-    print("INFO:WORKER: Sentiment analysis pipeline initialized successfully.")
-except Exception as e:
-    print(f"ERROR:WORKER: Failed to initialize sentiment analysis pipeline: {e}")
+MODEL_ID = "distilbert-base-uncased-finetuned-sst-2-english"
+CACHE_DIR = os.getenv('TRANSFORMERS_CACHE', '/tmp/transformers_cache')
+
+def init_sentiment_pipeline():
+    global sentiment_pipeline
+    try:
+        # First try to load model from cache
+        print(f"INFO:WORKER: Attempting to load model from cache: {CACHE_DIR}")
+        sentiment_pipeline = hf_pipeline(
+            task='sentiment-analysis',
+            model=MODEL_ID,
+            device=-1,  # Force CPU
+            cache_dir=CACHE_DIR
+        )
+        # Test the pipeline
+        test_result = sentiment_pipeline("Test sentence.")
+        print(f"INFO:WORKER: Model loaded and tested successfully: {test_result}")
+        return True
+    except Exception as e:
+        print(f"ERROR:WORKER: Failed to initialize pipeline: {e}")
+        try:
+            # Fallback: Try downloading model components separately
+            print("INFO:WORKER: Attempting fallback model initialization...")
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
+            model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
+            sentiment_pipeline = hf_pipeline(
+                task='sentiment-analysis',
+                model=model,
+                tokenizer=tokenizer,
+                device=-1
+            )
+            test_result = sentiment_pipeline("Test sentence.")
+            print(f"INFO:WORKER: Fallback initialization successful: {test_result}")
+            return True
+        except Exception as e2:
+            print(f"ERROR:WORKER: Fallback initialization failed: {e2}")
+            return False
+
+# Try to initialize the pipeline
+if not init_sentiment_pipeline():
+    print("WARNING:WORKER: Will retry sentiment pipeline initialization during processing")
 
 # --- Custom Stop Words --- (Define near imports or top of function)
 CUSTOM_STOP_WORDS = set([
