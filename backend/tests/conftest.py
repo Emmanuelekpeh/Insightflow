@@ -46,7 +46,7 @@ async def authenticated_client(async_client: AsyncClient):
             "last_name": user_data["last_name"]
         }
     }
-    signup_response = await async_client.post("/auth/signup", json=signup_payload)
+    signup_response = await async_client.post("/api/auth/signup", json=signup_payload)
     assert signup_response.status_code == status.HTTP_201_CREATED, f"Signup failed: {signup_response.text}"
     
     # 2. Log in the user
@@ -54,10 +54,11 @@ async def authenticated_client(async_client: AsyncClient):
         "username": user_data["email"],
         "password": user_data["password"]
     }
-    login_response = await async_client.post("/auth/login", data=login_payload)
+    login_response = await async_client.post("/api/auth/login", data=login_payload)
     assert login_response.status_code == status.HTTP_200_OK, f"Login failed: {login_response.text}"
     token_data = login_response.json()
-    access_token = token_data["access_token"]
+    access_token = token_data.get("access_token")
+    assert access_token, "Access token not found in login response"
     
     # 3. Create a new client instance with the auth header
     #    We create a new one to avoid modifying the original async_client fixture state

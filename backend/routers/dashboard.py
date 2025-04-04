@@ -3,8 +3,6 @@ from supabase import Client
 import shutil # For saving files
 import os # For creating directories and paths
 import arq # For type hinting ArqRedis pool
-import uuid # For generating job IDs
-import json # For parsing headers from DB
 from backend.schemas.dashboard import (
     MarketInsightsResponse,
     CompetitorAnalysisResponse,
@@ -14,12 +12,10 @@ from backend.schemas.dashboard import (
     CompetitorDataPoint,
     RecentChange,
     SentimentTopic,
-    AlertItem,
-    UploadResultList # Import the new list schema
+    AlertItem
 )
 from backend.database import get_db_client
 from backend.security import get_current_user
-from backend.worker import process_uploaded_file # Import the worker task
 from gotrue.types import User
 from datetime import datetime
 from typing import List
@@ -37,13 +33,6 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 }
 ALLOWED_EXTENSIONS = {".csv", ".xls", ".xlsx"}
-
-# Helper function to get Arq pool from request state
-def get_arq_pool(request: Request) -> arq.ArqRedis:
-    arq_pool = request.app.state.arq_pool
-    if not arq_pool:
-        raise HTTPException(status_code=500, detail="Task queue not available")
-    return arq_pool
 
 router = APIRouter(
     prefix="/dashboard",
@@ -272,214 +261,174 @@ async def get_recent_alerts(db: Client = Depends(get_db_client), current_user: U
         print(f"Error fetching recent alerts for user {current_user.id}: {e}")
         raise HTTPException(status_code=500, detail="Error fetching recent alerts.")
 
-# --- New Endpoint for Fetching Upload Results ---
-@router.get("/uploads", response_model=UploadResultList)
-async def get_upload_results(
-    db: Client = Depends(get_db_client),
-    current_user: User = Depends(get_current_user)
-):
-    """Fetches the upload history for the currently logged-in user."""
-    print(f"INFO: Fetching upload results for user_id: {current_user.id}")
-    try:
-        response = db.table('user_uploads')\
-                     .select('id, job_id, original_filename, status, created_at, updated_at, row_count, column_count, headers, error_reason')\
-                     .eq('user_id', current_user.id)\
-                     .order('created_at', desc=True)\
-                     .limit(50)\
-                     .execute()
-
-        if not response.data:
-            print(f"INFO: No upload results found for user_id: {current_user.id}")
-            return UploadResultList(uploads=[])
-
-        # Parse headers from JSON string to list if not null
-        for upload in response.data:
-            if upload.get('headers') and isinstance(upload['headers'], str):
-                try:
-                    upload['headers'] = json.loads(upload['headers'])
-                except json.JSONDecodeError:
-                    print(f"WARN: Could not parse headers JSON for upload id {upload.get('id')}")
-                    upload['headers'] = [] # Default to empty list on parse error
-            elif upload.get('headers') is None:
-                 upload['headers'] = [] # Default to empty list if null
-
-        print(f"INFO: Found {len(response.data)} upload results for user_id: {current_user.id}")
-        return UploadResultList(uploads=response.data)
-
-    except Exception as e:
-        print(f"ERROR: Failed fetching upload results for user_id {current_user.id}: {e}")
-        raise HTTPException(status_code=500, detail="Error fetching upload history.")
-
-# --- Existing Upload Endpoint (Needs Modification) ---
-# TODO: Modify this endpoint to insert into user_uploads and enqueue job
 async def validate_file(file: UploadFile) -> tuple[bool, str]:
-    """Validates file size, extension, and content type."""
-    # 1. Size Check
-    # Seek to the end to get the size, then back to the start
-    file.file.seek(0, os.SEEK_END)
-    file_size = file.file.tell()
-    file.file.seek(0)
-    if file_size > MAX_FILE_SIZE:
-        return False, f"File size exceeds the limit of {MAX_FILE_SIZE // (1024 * 1024)}MB."
+    """
+    Validate the uploaded file against size and type restrictions.
+    
+    Size Limits:
+    - Free Plan: 50MB
+    - Pro/Team Plans: Up to 50GB
+    - Enterprise: Custom limits
+    
+    Returns:
+    - tuple[bool, str]: (is_valid, error_message)
+    """
+    # Check file size
+    contents = await file.read()
+    await file.seek(0)  # Reset file pointer
+    
+    size_mb = len(contents) / (1024 * 1024)
+    if len(contents) > MAX_FILE_SIZE:
+        return False, (
+            f"File too large ({size_mb:.1f}MB). Maximum size is {MAX_FILE_SIZE/1024/1024:.1f}MB. "
+            "Upgrade your plan for larger file uploads."
+        )
 
-    # 2. Extension Check
-    file_ext = os.path.splitext(file.filename or "")[1].lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        return False, f"Invalid file extension. Allowed: {', '.join(ALLOWED_EXTENSIONS)}."
-
-    # 3. Content-Type Check
+    # Check content type
     if file.content_type not in ALLOWED_CONTENT_TYPES:
-        # Optionally, use python-magic for more robust type checking here if needed
-        return False, f"Invalid file content type. Allowed: {', '.join(ALLOWED_CONTENT_TYPES)}."
+        return False, (
+            f"Invalid file type: {file.content_type}. "
+            f"Allowed types: CSV, Excel files"
+        )
 
-    return True, "File is valid."
+    # Check file extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return False, (
+            f"Invalid file extension: {ext}. "
+            f"Allowed extensions: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
 
+    return True, "", contents  # Return contents to avoid reading twice
 
 @router.post("/upload")
 async def upload_data(
     request: Request,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: Client = Depends(get_db_client), # Inject DB client
-    arq_pool: arq.ArqRedis = Depends(get_arq_pool) # Inject Arq pool
+    current_user: User = Depends(get_current_user)
 ):
-    """
-    Receives a file upload, validates it, saves it temporarily,
-    creates a record in user_uploads with 'queued' status,
-    and enqueues a background job for processing.
-    """
-    print(f"INFO: Received file upload request from user_id: {current_user.id}, filename: {file.filename}")
-
-    # 1. Validate File
-    print(f"INFO: Validating file: {file.filename} for user_id: {current_user.id}")
+    """Upload a file for processing."""
+    # Validate the file
     is_valid, error_message = await validate_file(file)
     if not is_valid:
-        print(f"WARN: Invalid file upload from user_id: {current_user.id}, filename: {file.filename}, reason: {error_message}")
         raise HTTPException(status_code=400, detail=error_message)
-    print(f"INFO: File validation successful for: {file.filename}, user_id: {current_user.id}")
-
-    # Reset file pointer after validation read it
-    await file.seek(0)
-
-    # 2. Save File Temporarily
-    job_id = str(uuid.uuid4())
-    # Use job_id in the filename to prevent collisions
-    _, file_extension = os.path.splitext(file.filename)
-    temp_file_name = f"{job_id}{file_extension}"
-    temp_file_path = os.path.join(TEMP_UPLOAD_DIR, temp_file_name)
-    print(f"INFO: Saving temporary file to: {temp_file_path} for job_id: {job_id}")
 
     try:
+        # Create temp_uploads directory if it doesn't exist
+        temp_dir = os.path.join(os.path.dirname(__file__), "..", "temp_uploads")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Generate a unique filename
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        safe_filename = "".join(c for c in file.filename if c.isalnum() or c in ('.', '-', '_')).rstrip()
+        temp_file_path = os.path.join(temp_dir, f"{timestamp}_{current_user.id[:8]}_{safe_filename}")
+
+        # Save the uploaded file
+        print(f"Saving uploaded file to: {temp_file_path}")
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        print(f"INFO: Temporary file saved successfully: {temp_file_path}")
-    except Exception as e:
-        print(f"ERROR: Failed to save temporary file {temp_file_path} for user_id {current_user.id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
-    finally:
-        await file.close() # Ensure file handle is closed
+        print(f"File saved successfully")
 
-    # 3. Create Initial Database Record
-    print(f"INFO: Creating initial DB record for job_id: {job_id}, user_id: {current_user.id}")
-    try:
-        insert_data = {
-            "job_id": job_id,
-            "user_id": current_user.id,
-            "original_filename": file.filename,
-            "status": "queued", # Start with 'queued' status
-            "temp_file_path": temp_file_path, # Store temp path for worker
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
+        # Get the Arq pool
+        arq_pool = request.app.state.arq_pool
+        if not arq_pool:
+            raise HTTPException(status_code=500, detail="Background task queue not available")
+
+        # Enqueue the processing job
+        print(f"Enqueuing job process_uploaded_file for {temp_file_path}")
+        job = await arq_pool.enqueue_job(
+            'process_uploaded_file',
+            temp_file_path,
+            str(current_user.id)
+        )
+        print(f"Job enqueued with ID: {job.job_id}")
+
+        if not job:
+            raise HTTPException(status_code=500, detail="Failed to enqueue processing task")
+
+        return {
+            "status": "accepted",
+            "message": "File uploaded successfully and queued for processing",
+            "job_id": job.job_id,
+            "filename": file.filename,
+            "size": len(contents),
+            "content_type": file.content_type
         }
-        response = db.table("user_uploads").insert(insert_data).execute()
-
-        # Minimal check if insert appeared successful (adjust based on actual response)
-        if not response.data:
-            print(f"WARN: DB insert for job_id {job_id} might have failed (no data returned). Response: {response}")
-            # Depending on strictness, you might raise an error here
-            # For now, we proceed but log a warning
-
-        print(f"INFO: Initial DB record created for job_id: {job_id}")
 
     except Exception as e:
-        print(f"ERROR: Failed to create initial DB record for job_id {job_id}, user_id {current_user.id}: {e}")
-        # Clean up the saved file if DB insert fails
-        if os.path.exists(temp_file_path):
+        print(f"Error during file upload for user {current_user.id}: {e}")
+        # Clean up temp file if it exists
+        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
             try:
                 os.remove(temp_file_path)
-                print(f"INFO: Cleaned up temporary file due to DB error: {temp_file_path}")
-            except OSError as rm_err:
-                print(f"ERROR: Failed to cleanup temporary file {temp_file_path} after DB error: {rm_err}")
-        raise HTTPException(status_code=500, detail="Failed to record upload job.")
+            except OSError:
+                pass  # Already being handled by the main error
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-    # 4. Enqueue Job
-    print(f"INFO: Enqueuing background job for job_id: {job_id}")
-    try:
-        await arq_pool.enqueue_job(
-            "process_uploaded_file",
-            job_id=job_id,
-            user_id=str(current_user.id), # Pass user ID
-            file_path=temp_file_path,
-            original_filename=file.filename
-        )
-        print(f"INFO: Job enqueued successfully for job_id: {job_id}")
-    except Exception as e:
-        print(f"ERROR: Failed to enqueue job for job_id {job_id}, user_id {current_user.id}: {e}")
-        # Note: Consider how to handle enqueue failure.
-        # Should the DB record be updated to 'failed'? Or attempt retry?
-        # For now, just raise an error. The DB record will remain 'queued'.
-        # A monitoring system could later identify stalled 'queued' jobs.
-        raise HTTPException(status_code=500, detail="Failed to enqueue processing job.")
-
-    return {"job_id": job_id, "status": "queued", "filename": file.filename}
-
+    finally:
+        await file.close()
 
 @router.get("/jobs/{job_id}/status")
 async def get_job_status(
     job_id: str,
-    request: Request, # Keep request to potentially access state if needed
-    db: Client = Depends(get_db_client), # Inject DB client
+    request: Request,
     current_user: User = Depends(get_current_user)
 ):
-    """Gets the status of a specific job from the user_uploads table."""
-    print(f"INFO: Received status request for job_id: {job_id} from user_id: {current_user.id}")
+    """Get the status of a background job."""
     try:
-        response = db.table("user_uploads") \
-                     .select("status, error_reason, original_filename") \
-                     .eq("job_id", job_id) \
-                     .eq("user_id", current_user.id) \
-                     .maybe_single() \
-                     .execute()
+        # Get the Arq pool from application state
+        arq_pool = request.app.state.arq_pool
+        if not arq_pool:
+            raise HTTPException(status_code=500, detail="Background task queue not available")
 
-        if not response.data:
-            print(f"WARN: Job status not found for job_id: {job_id}, user_id: {current_user.id}")
-            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found or access denied.")
-
-        job_data = response.data
-        status = job_data.get("status", "unknown")
-        error = job_data.get("error_reason")
-        filename = job_data.get("original_filename", "N/A")
-
-        print(f"INFO: Returning status '{status}' for job_id: {job_id}, user_id: {current_user.id}")
+        # Try to get the job result
+        job = await arq_pool.get_job_result(job_id)
         
-        # Return status and error message if failed
-        response_data = {"job_id": job_id, "status": status, "filename": filename}
-        if status == "failed" and error:
-            response_data["message"] = error
-        
-        return response_data
+        if job is None:
+            # Job not found or expired from Redis
+            return {
+                "status": "not_found",
+                "message": "Job not found or result expired"
+            }
 
-    except HTTPException as http_exc:
-        # Re-raise HTTP exceptions (like 404)
-        raise http_exc
+        # Check if job is finished
+        if isinstance(job, dict):
+            # Job is complete, return the result
+            return {
+                "status": "completed",
+                "result": job
+            }
+        
+        # Job exists but not complete
+        job_info = await arq_pool.job_info(job_id)
+        if not job_info:
+            return {
+                "status": "not_found",
+                "message": "Job info not available"
+            }
+
+        # Map job status to something frontend-friendly
+        status_map = {
+            "deferred": "queued",
+            "queued": "queued", 
+            "in_progress": "processing",
+            "complete": "completed",
+            "failed": "failed"
+        }
+        
+        return {
+            "status": status_map.get(job_info.status, "unknown"),
+            "message": f"Job is {job_info.status}"
+        }
+
     except Exception as e:
-        print(f"ERROR: Failed fetching status for job_id {job_id}, user_id {current_user.id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error fetching status for job {job_id}.")
+        print(f"Error checking job status for {job_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking job status: {str(e)}"
+        )
 
-
-# Placeholder for other dashboard endpoints (e.g., generating reports)
-# @router.post("/generate-report")
-# async def generate_report(params: dict, current_user: User = Depends(get_current_user)):
-#     # Logic to generate a report based on user data
-#     return {"message": "Report generation started"}
+# Add more endpoints for Competitor Analysis, Sentiment Analysis, Recent Alerts etc. here
+# e.g., @router.get("/competitor-analysis") ...
+# e.g., @router.get("/sentiment-analysis") ...
+# e.g., @router.get("/recent-alerts") ...

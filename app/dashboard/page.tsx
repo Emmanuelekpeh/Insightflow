@@ -1,3 +1,6 @@
+"use client"
+
+import React, { useState, useCallback } from 'react';
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { MarketInsights } from "@/components/dashboard/market-insights"
@@ -8,6 +11,12 @@ import { UploadData } from "@/components/dashboard/upload-data"
 import { UploadHistory } from "@/components/dashboard/upload-history"
 
 export default function DashboardPage() {
+  const [historyKey, setHistoryKey] = useState(0);
+
+  const handleUploadComplete = useCallback(() => {
+    setHistoryKey(prevKey => prevKey + 1);
+  }, []);
+
   return (
     <DashboardShell>
       <DashboardHeader heading="Dashboard" text="View your market insights, competitor analysis, and sentiment data." />
@@ -16,8 +25,8 @@ export default function DashboardPage() {
         <SentimentAnalysis />
         <CompetitorAnalysis className="md:col-span-2 lg:col-span-2" />
         <RecentAlerts />
-        <UploadData />
-        <UploadHistory className="md:col-span-2 lg:col-span-3" />
+        <UploadData onUploadComplete={handleUploadComplete} />
+        <UploadHistory className="md:col-span-2 lg:col-span-3" refreshTrigger={historyKey} />
       </div>
     </DashboardShell>
   )

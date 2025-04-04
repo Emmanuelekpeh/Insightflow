@@ -1,12 +1,10 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-
-from backend.lib.supabase import get_supabase_client
+from ..lib.supabase import get_supabase_client
+from ..services.email import send_email
 
 router = APIRouter(prefix="/api/newsletter", tags=["newsletter"])
 
@@ -70,15 +68,10 @@ async def unsubscribe_from_newsletter(email: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def send_welcome_email(email: str, name: Optional[str] = None):
-    """Send a welcome email to new subscribers."""
+    """Send a welcome email to new subscribers using MailerSend."""
     try:
-        sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))
-        
-        message = Mail(
-            from_email='your-verified-sender@yourdomain.com',
-            to_emails=email,
-            subject='Welcome to InsightFlow Newsletter!',
-            html_content=f'''
+        subject = 'Welcome to InsightFlow Newsletter!'
+        html_content=f'''
             <h2>Welcome to InsightFlow!</h2>
             <p>Dear {name or "Valued Subscriber"},</p>
             <p>Thank you for subscribing to our newsletter. You'll receive regular updates about:</p>
@@ -88,10 +81,11 @@ async def send_welcome_email(email: str, name: Optional[str] = None):
                 <li>Industry News</li>
             </ul>
             <p>Stay tuned for your first newsletter!</p>
+            <p>To manage your subscription, please visit your account settings (if applicable) or look for an unsubscribe link in future emails.</p>
             '''
-        )
-        
-        sg.send(message)
+        await send_email(to_email=email, subject=subject, html_content=html_content)
+        print(f"Welcome email sent successfully to {email}")
+
     except Exception as e:
         print(f"Error sending welcome email: {str(e)}")
         # Don't raise the exception - this is a background task 

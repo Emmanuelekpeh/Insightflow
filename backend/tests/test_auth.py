@@ -6,7 +6,7 @@ import uuid # To generate unique emails for testing
 # Import the FastAPI app instance
 from backend.main import app
 # Import helper from conftest
-from backend.tests.conftest import generate_test_user 
+from backend.tests.conftest import generate_test_user # Correct import path
 
 # Reuse the client fixture from test_main.py (pytest finds it automatically)
 # If test_main.py is not in the same directory or discoverable, you might need to import it
@@ -26,16 +26,20 @@ async def test_signup_success(async_client: AsyncClient):
     payload = {
         "email": user_data["email"],
         "password": user_data["password"],
-        "data": {
-            "first_name": user_data["first_name"],
-            "last_name": user_data["last_name"]
-        }
+        # Optional: Add data field if your schema requires it
+        # "data": {
+        #     "first_name": user_data["first_name"],
+        #     "last_name": user_data["last_name"]
+        # }
     }
-    response = await async_client.post("/auth/signup", json=payload)
+    response = await async_client.post("/api/auth/signup", json=payload) # Add /api prefix
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
-    assert response_data["email"] == user_data["email"]
-    assert "id" in response_data
+    # Check the structure based on the updated signup response
+    assert "message" in response_data
+    assert "user" in response_data
+    assert response_data["user"]["email"] == user_data["email"]
+    assert "id" in response_data["user"]
     # IMPORTANT: Realistically, you'd want to clean up this user from Supabase
     # either here, in a fixture, or manually after testing.
 
@@ -45,21 +49,21 @@ async def test_signup_existing_email(async_client: AsyncClient):
     payload = {
         "email": user_data["email"],
         "password": user_data["password"],
-        "data": {
-            "first_name": user_data["first_name"],
-            "last_name": user_data["last_name"]
-        }
+        # "data": {
+        #     "first_name": user_data["first_name"],
+        #     "last_name": user_data["last_name"]
+        # }
     }
     
     # First signup (should succeed)
-    response1 = await async_client.post("/auth/signup", json=payload)
+    response1 = await async_client.post("/api/auth/signup", json=payload) # Add /api prefix
     assert response1.status_code == status.HTTP_201_CREATED
     
-    # Second signup attempt with the same email (should fail)
-    response2 = await async_client.post("/auth/signup", json=payload)
-    assert response2.status_code == status.HTTP_400_BAD_REQUEST 
+    # Second signup attempt with the same email (should fail with 409)
+    response2 = await async_client.post("/api/auth/signup", json=payload) # Add /api prefix
+    assert response2.status_code == status.HTTP_409_CONFLICT \
     # Check the detail message (might vary slightly based on Supabase response)
-    assert "User already registered" in response2.json().get("detail", "")
+    assert "Email already registered" in response2.json().get("detail", "")
 
 async def test_login_success(async_client: AsyncClient):
     """Test successful user login after signing up."""
@@ -67,14 +71,14 @@ async def test_login_success(async_client: AsyncClient):
     signup_payload = {
         "email": user_data["email"],
         "password": user_data["password"],
-        "data": {
-            "first_name": user_data["first_name"],
-            "last_name": user_data["last_name"]
-        }
+        # "data": {
+        #     "first_name": user_data["first_name"],
+        #     "last_name": user_data["last_name"]
+        # }
     }
     
     # Ensure user exists
-    signup_response = await async_client.post("/auth/signup", json=signup_payload)
+    signup_response = await async_client.post("/api/auth/signup", json=signup_payload) # Add /api prefix
     assert signup_response.status_code == status.HTTP_201_CREATED
     
     # Attempt login
@@ -83,7 +87,7 @@ async def test_login_success(async_client: AsyncClient):
         "password": user_data["password"]
     }
     # Note: Login expects form data, not JSON
-    response = await async_client.post("/auth/login", data=login_payload)
+    response = await async_client.post("/api/auth/login", data=login_payload) # Add /api prefix
     
     assert response.status_code == status.HTTP_200_OK
     response_data = response.json()
@@ -96,14 +100,14 @@ async def test_login_incorrect_password(async_client: AsyncClient):
     signup_payload = {
         "email": user_data["email"],
         "password": user_data["password"],
-        "data": {
-            "first_name": user_data["first_name"],
-            "last_name": user_data["last_name"]
-        }
+        # "data": {
+        #     "first_name": user_data["first_name"],
+        #     "last_name": user_data["last_name"]
+        # }
     }
     
     # Ensure user exists
-    signup_response = await async_client.post("/auth/signup", json=signup_payload)
+    signup_response = await async_client.post("/api/auth/signup", json=signup_payload) # Add /api prefix
     assert signup_response.status_code == status.HTTP_201_CREATED
 
     # Attempt login with wrong password
@@ -111,7 +115,7 @@ async def test_login_incorrect_password(async_client: AsyncClient):
         "username": user_data["email"],
         "password": "wrongPassword"
     }
-    response = await async_client.post("/auth/login", data=login_payload)
+    response = await async_client.post("/api/auth/login", data=login_payload) # Add /api prefix
     
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Incorrect email or password" in response.json().get("detail", "")
@@ -122,7 +126,7 @@ async def test_login_nonexistent_user(async_client: AsyncClient):
         "username": f"nonexistent_{uuid.uuid4()}@example.com",
         "password": "anyPassword"
     }
-    response = await async_client.post("/auth/login", data=login_payload)
+    response = await async_client.post("/api/auth/login", data=login_payload) # Add /api prefix
     
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Incorrect email or password" in response.json().get("detail", "") 

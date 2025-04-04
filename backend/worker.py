@@ -1,3 +1,4 @@
+from typing import Optional, Dict, List, Any, Union
 import asyncio
 import os
 import time # To measure processing duration
@@ -13,7 +14,6 @@ import re # Import regex for potential use
 from arq import cron
 from arq.connections import RedisSettings
 import arq # For Arq pool creation
-from typing import Optional, Dict, List, Any, Union
 import psutil
 import torch
 from transformers import pipeline as hf_pipeline
@@ -37,7 +37,8 @@ try:
     sentiment_pipeline = hf_pipeline(
         task='sentiment-analysis',
         model='distilbert-base-uncased-finetuned-sst-2-english',  # Using a verified public model
-        device=-1  # Force CPU for stability
+        device=-1,  # Force CPU for stability
+        cache_dir=os.getenv('TRANSFORMERS_CACHE', '/tmp/transformers_cache')  # Use explicit cache dir
     )
     print("INFO:WORKER: Sentiment analysis pipeline initialized successfully.")
 except Exception as e:
