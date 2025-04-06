@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 from supabase.lib.client_options import ClientOptions
-from supabase.lib.errors import AuthApiError
+from gotrue.errors import AuthApiError
 
 from ..schemas.auth import UserCreate, UserLogin, Token # Import UserLogin and Token
 from ..dependencies import get_supabase_client # Use corrected import path
@@ -39,33 +39,26 @@ async def signup(user_data: UserCreate, db: Client = Depends(get_supabase_client
 
         # 2. Insert minimal user details into our public.users table
         # Keep this minimal, primary user data is in Supabase Auth
-        insert_response = db.table('users')\
-                            .insert({
-                                'user_id': str(supabase_user_id),
-                                'email': user_data.email,
-                                # 'first_name': user_data.data.first_name if user_data.data else None,
-                                # 'last_name': user_data.data.last_name if user_data.data else None,
-                                # Consider adding created_at/updated_at managed by DB
-                                # 'subscription_tier': 'Free' # Set default tier
-                            })\
-                            .execute()
+        # Remove Supabase table insertion as it might fail due to permission errors
+        # Consider a separate function/trigger if profile data is needed
+        # insert_response = db.table('users')\
+        #                     .insert({
+        #                         'user_id': str(supabase_user_id),
+        #                         'email': user_data.email,
+        #                     })\
+        #                     .execute()
 
-        # Check if insert failed
-        if hasattr(insert_response, 'error') and insert_response.error:
-            # Log the specific database error
-            print(f"Database insert error for user {supabase_user_id}: {insert_response.error}")
-            # Consider trying to delete the Auth user if the profile insert fails?
-            # db.auth.admin.delete_user(supabase_user_id) # Requires service key
-            raise HTTPException(status_code=500, detail="Failed to create user profile in database.")
+        # # Check if insert failed
+        # if hasattr(insert_response, 'error') and insert_response.error:
+        #     print(f"Database insert error for user {supabase_user_id}: {insert_response.error}")
+        #     raise HTTPException(status_code=500, detail="Failed to create user profile in database.")
 
-        # Return success message
-        # Adjust message if email confirmation is enabled in Supabase
+        # Return success message (adjusted for potentially pending confirmation)
         return {
-            "message": "Signup successful!",
+            "message": "Signup initiated successfully! Please check your email for confirmation if required.",
             "user": {
                 "id": supabase_user_id,
                 "email": user_data.email
-                # Add other non-sensitive fields if needed
             }
         }
 
@@ -84,7 +77,11 @@ async def signup(user_data: UserCreate, db: Client = Depends(get_supabase_client
 
 # Add the login endpoint
 @router.post("/login", response_model=Token) # Use Token as the response model
-async def login(form_data: UserLogin = Depends(), db: Client = Depends(get_supabase_client)):
+async def login(
+    # Use the UserLogin.as_form method for dependency injection
+    form_data: UserLogin = Depends(UserLogin.as_form),
+    db: Client = Depends(get_supabase_client)
+    ):
     """Handles user login and returns an access token."""
     try:
         # Authenticate user with Supabase using email/password

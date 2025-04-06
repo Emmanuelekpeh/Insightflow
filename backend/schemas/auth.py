@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from fastapi import Form # Import Form
 
 # Schema for user registration input
 class UserCreate(BaseModel):
@@ -9,6 +10,13 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+    # Add class method to parse as form data
+    @classmethod
+    def as_form(cls,
+                email: str = Form(...),
+                password: str = Form(...)):
+        return cls(email=email, password=password)
 
 # Schema for the token response after successful login
 class Token(BaseModel):
